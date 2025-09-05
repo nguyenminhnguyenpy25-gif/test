@@ -23,17 +23,30 @@ struct ContentView: View {
                     Button("Start Location Services") {
                         nav.startLocationServices()
                     }
+
                     TextField("Destination (address OR lat,lon)", text: $destinationText)
                         .focused($focused)
-                    HStack {
-                        Button("Start Nav") {
+
+                    HStack(spacing: 12) {
+                        Button(action: {
                             focused = false
                             nav.startNavigation(to: destinationText)
+                        }) {
+                            Text("Start Nav")
+                                .frame(maxWidth: .infinity)
                         }
-                        Button("Stop Nav") {
+                        .disabled(nav.isNavigating)
+                        .buttonStyle(.borderedProminent)
+
+                        Button(action: {
                             nav.stopNavigation()
+                        }) {
+                            Text("Stop Nav")
+                                .frame(maxWidth: .infinity)
                         }
-                        .foregroundColor(.red)
+                        .disabled(!nav.isNavigating)
+                        .buttonStyle(.bordered)
+                        .tint(.red)
                     }
                 }
 
