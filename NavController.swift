@@ -112,7 +112,6 @@ final class StepTracker {
             let dToRoute = distanceFromLocationToPolyline(loc, polyline: r.polyline)
             if dToRoute > rerouteThresholdMeters {
                 print("Possibly off-route (distance to route: \(Int(dToRoute)) m)")
-                // You could trigger a re-route here (NavController handles re-request)
             }
         }
     }
@@ -145,13 +144,13 @@ final class ESPWebSocketManager {
     private var session: URLSession?
     private var task: URLSessionWebSocketTask?
     private(set) var isConnected = false
-    private var address: String = ""   
+    private var address: String = ""
 
     var onConnected: (() -> Void)?
     var onDisconnected: (() -> Void)?
 
     func connect(to address: String) {
-        disconnect() 
+        disconnect()
         self.address = address
         guard let url = URL(string: "ws://\(address)") else {
             print("Invalid WS URL")
@@ -230,7 +229,7 @@ final class ESPWebSocketManager {
     }
 
     private func postFallback(data: Data) {
-        var host = "http://\(address)/step"
+        let host = "http://\(address)/step"
         if address.isEmpty { print("No address for fallback"); return }
         guard let url = URL(string: host) else { print("Invalid fallback URL"); return }
 
@@ -253,7 +252,10 @@ final class NavController: ObservableObject {
     @Published var currentIndex: Int = -1
     @Published var websocketConnected: Bool = false
     @Published var status: String = "Idle"
-    @Published var espAddress: String = "192.168.1.55:81" 
+    @Published var espAddress: String = "192.168.1.55:81"
+
+    // navigation state: Start/Stop control
+    @Published var isNavigating: Bool = false
 
     let locationManager = LocationManager()
     let routeManager = RouteManager()
@@ -294,22 +296,37 @@ final class NavController: ObservableObject {
     func startLocationServices() {
         locationManager.requestPermissions()
         locationManager.start()
-        status = "Locating..."
+        DispatchQueue.main.async {
+            self.status = "Locating..."
+        }
     }
 
     func connectESP() {
         wsManager.connect(to: espAddress)
-        status = "Connecting to \(espAddress)"
+        DispatchQueue.main.async {
+            self.status = "Connecting to \(self.espAddress)"
+        }
     }
 
     func disconnectESP() {
         wsManager.disconnect()
-        status = "Disconnected"
+        DispatchQueue.main.async {
+            self.status = "Disconnected"
+        }
     }
 
     func startNavigation(to destinationText: String) {
+        guard !isNavigating else {
+            DispatchQueue.main.async {
+                self.status = "Already navigating"
+            }
+            return
+        }
+
         guard let origin = locationManager.lastLocation?.coordinate else {
-            status = "Waiting for location..."
+            DispatchQueue.main.async {
+                self.status = "Waiting for location..."
+            }
             return
         }
 
@@ -320,6 +337,7 @@ final class NavController: ObservableObject {
                     self.stepTracker.setRoute(r)
                     DispatchQueue.main.async {
                         self.status = "Route set to \(name)"
+                        self.isNavigating = true
                     }
                 } else {
                     DispatchQueue.main.async {
@@ -329,13 +347,15 @@ final class NavController: ObservableObject {
             }
         }
     }
-
     func stopNavigation() {
         stepTracker.clear()
-        currentIndex = -1
-        currentStepText = ""
-        currentStepDistanceText = ""
-        status = "Navigation stopped"
+        DispatchQueue.main.async {
+            self.currentIndex = -1
+            self.currentStepText = ""
+            self.currentStepDistanceText = ""
+            self.isNavigating = false
+            self.status = "Navigation stopped"
+        }
     }
 
     private func parseDestination(_ text: String, completion: @escaping (CLLocationCoordinate2D, String) -> Void) {
